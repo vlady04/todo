@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:to_do_app/data/database.dart';
 import 'package:to_do_app/todo_tile.dart';
 import 'package:to_do_app/util/dialog_box.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
@@ -11,32 +13,53 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  // reference the hive box
+  final _myBox = Hive.box('mybox');
+
+
+  @override
+  void initState() {
+    // if this is the first time opemimg the app, then create default data
+    if (_myBox.get("TODOLIST") == null) {
+      db.createInitialdata();
+    
+    } else{
+      // there already exist data
+      db.loadData();
+
+    }
+    super.initState();
+  }
+
+  // text controller
   final _controller = TextEditingController();
   final GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>();
 
-  List<List<dynamic>> toDoList = [
-    ["Pet Stella", false],
-    ["Pet ofelia", false],
-  ];
+ ToDoDataBase db = ToDoDataBase();
 
+  // checkbox was changed
   void checkBoxChanged(bool? value, int index) {
     setState(() {
-      toDoList[index][1] = !toDoList[index][1];
+      db.toDoList[index][1] = !db.toDoList[index][1];
     });
+    db.updateDataBase();
   }
 
+  //save a neew task
   void saveNewTask() {
     setState(() {
-      toDoList.add([_controller.text, false]);
+      db.toDoList.add([_controller.text, false]);
       _controller.clear();
     });
     _listKey.currentState?.insertItem(
-      toDoList.length - 1,
+      db.toDoList.length - 1,
       duration: const Duration(milliseconds: 600), // Smooth add animation
     );
     Navigator.of(context).pop();
+    db.updateDataBase();
   }
 
+  //create a new task
   void createNewTask() {
     showDialog(
       context: context,
@@ -50,37 +73,48 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+// delete a task
   void deleteTask(BuildContext context, int index) {
-    final removedItem = toDoList[index];
+    final removedItem = db.toDoList[index];
 
     // Close the slidable before starting the animation
     Slidable.of(context)?.close();
 
+    // Animate the removed item (fading)
     _listKey.currentState?.removeItem(
       index,
       (context, animation) => FadeTransition(
-        opacity: animation, // Gradually fades out
-        child: ScaleTransition(
-          scale: animation.drive(
-            Tween<double>(begin: 0.0, end: 1.0).chain(
-              CurveTween(curve: Curves.easeInOut), // Smooth shrink effect
+        opacity: animation,
+        child: SizeTransition(
+          sizeFactor: animation,
+          axis: Axis.vertical,
+          child: ScaleTransition(
+            scale: animation.drive(
+              Tween<double>(begin: 0.0, end: 1.0) // Shrinks smoothly
+              .chain(CurveTween(curve: Curves.easeInOut)),
             ),
-          ),
-          child: ToDoTile(
-            taskName: removedItem[0],
-            taskCompleted: removedItem[1],
-            onChanged: (value) {},
-            deleteFunction: (context) {},
+            child: ToDoTile(
+              taskName: removedItem[0],
+              taskCompleted: removedItem[1],
+              onChanged: (value) {},
+              deleteFunction: (context) {},
+            ),
           ),
         ),
       ),
-      duration: const Duration(milliseconds: 600), // Same duration as adding
+      duration: const Duration(
+        milliseconds: 600,
+      ), // Matches the adding animation
     );
 
+    // Remove item from the list AFTER triggering the animation
     setState(() {
-      toDoList.removeAt(index);
+      db.toDoList.removeAt(index);
     });
+
+    db.updateDataBase();
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -98,7 +132,7 @@ class _HomePageState extends State<HomePage> {
       ),
       body: AnimatedList(
         key: _listKey,
-        initialItemCount: toDoList.length,
+        initialItemCount: db.toDoList.length,
         itemBuilder: (context, index, animation) {
           return ScaleTransition(
             scale: animation.drive(
@@ -109,8 +143,8 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             child: ToDoTile(
-              taskName: toDoList[index][0],
-              taskCompleted: toDoList[index][1],
+              taskName: db.toDoList[index][0],
+              taskCompleted: db.toDoList[index][1],
               onChanged: (value) => checkBoxChanged(value, index),
               deleteFunction: (context) => deleteTask(context, index),
             ),
